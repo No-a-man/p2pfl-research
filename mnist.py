@@ -26,7 +26,7 @@ import time
 import uuid
 
 import matplotlib.pyplot as plt
-import example
+import runPrimalSVM
 
 from p2pfl.communication.protocols.protobuff.grpc import GrpcCommunicationProtocol
 from p2pfl.communication.protocols.protobuff.memory import MemoryCommunicationProtocol
@@ -115,7 +115,7 @@ def mnist(
 
         model_fn = model_build_fn  # type: ignore
     elif framework == "pytorch":
-        from example import model_build_fn  # type: ignore
+        from runPrimalSVM import model_build_fn  # type: ignore
 
         model_fn = model_build_fn  # type: ignore
     else:
