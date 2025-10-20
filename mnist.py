@@ -26,12 +26,14 @@ import time
 import uuid
 
 import matplotlib.pyplot as plt
-import runPrimalSVM
+import runSimpleTextSVM
 
 from p2pfl.communication.protocols.protobuff.grpc import GrpcCommunicationProtocol
 from p2pfl.communication.protocols.protobuff.memory import MemoryCommunicationProtocol
 from p2pfl.learning.aggregators.scaffold import Scaffold
 from p2pfl.learning.dataset.p2pfl_dataset import P2PFLDataset
+from datasets import load_dataset
+from text_dataset import TextP2PFLDataset
 from p2pfl.learning.dataset.partition_strategies import RandomIIDPartitionStrategy
 from p2pfl.management.logger import logger
 from p2pfl.node import Node
@@ -81,7 +83,7 @@ def mnist(
     aggregator: str = "fedavg",
     reduced_dataset: bool = False,
     topology: TopologyType = TopologyType.LINE,
-    batch_size: int = 128,
+    batch_size: int = 32,
 ) -> None:
     """
     P2PFL MNIST experiment.
@@ -100,8 +102,9 @@ def mnist(
         batch_size: The batch size for training.
 
     """
-    if measure_time:
-        start_time = time.time()
+    # Always measure time for training
+    training_start_time = time.time()
+    print(f"🚀 Starting training at {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
     # Check settings
     if n > Settings.gossip.TTL:
@@ -115,13 +118,13 @@ def mnist(
 
         model_fn = model_build_fn  # type: ignore
     elif framework == "pytorch":
-        from runPrimalSVM import model_build_fn  # type: ignore
+        from runSimpleTextSVM import model_build_fn  # type: ignore
 
         model_fn = model_build_fn  # type: ignore
     else:
         raise ValueError(f"Framework {args.framework} not added on this example.")
 
-    # Data
+    # Data - Use original MNIST dataset for now
     data = P2PFLDataset.from_huggingface("p2pfl/MNIST")
     data.set_batch_size(batch_size)
     partitions = data.generate_partitions(
@@ -155,10 +158,24 @@ def mnist(
             raise ValueError("Skipping training, amount of round is less than 1")
 
         # Start Learning
+        learning_start_time = time.time()
+        print(f"📚 Starting federated learning at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"🔢 Configuration: {r} rounds, {e} epochs per round, {n} nodes")
         nodes[0].set_start_learning(rounds=r, epochs=e)
 
         # Wait and check
         wait_to_finish(nodes, timeout=60 * 60)  # 1 hour
+        
+        # Calculate training time
+        learning_end_time = time.time()
+        total_training_time = learning_end_time - learning_start_time
+        total_experiment_time = learning_end_time - training_start_time
+        
+        print(f"\n✅ Training completed!")
+        print(f"⏱️  Learning time: {total_training_time:.2f} seconds ({total_training_time/60:.2f} minutes)")
+        print(f"⏱️  Average time per round: {total_training_time/r:.2f} seconds")
+        print(f"⏱️  Total experiment time: {total_experiment_time:.2f} seconds ({total_experiment_time/60:.2f} minutes)")
+        print(f"🏁 Experiment finished at {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
         # Local Logs
         if show_metrics:
@@ -195,6 +212,13 @@ def mnist(
                         plt.ylabel(metric)
                         plt.legend()
                         plt.show()
+            if 'loss' in node_metrics:
+                loss_vals = node_metrics['loss']
+                if len(loss_vals) > 1:
+                    initial_loss = loss_vals[0][1]
+                    final_loss = loss_vals[-1][1]
+                    convergence_speed = (initial_loss - final_loss) / len(loss_vals)
+                    print(f"📉 Convergence Speed: {convergence_speed:.6f} loss units per epoch")
     except Exception as e:
         raise e
     finally:
@@ -202,6 +226,13 @@ def mnist(
         for node in nodes:
             node.stop()
 
+        # Final timing summary
+        final_time = time.time()
+        total_experiment_time = final_time - training_start_time
+        print(f"\n📊 FINAL TIMING SUMMARY:")
+        print(f"⏱️  Total experiment time: {total_experiment_time:.2f} seconds ({total_experiment_time/60:.2f} minutes)")
+        print(f"🏁 Complete experiment finished at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        
         if measure_time:
             print("--- %s seconds ---" % (time.time() - start_time))
 

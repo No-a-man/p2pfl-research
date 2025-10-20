@@ -127,12 +127,12 @@ class MLP(L.LightningModule):
 
 
 # To Run MLP basic example
-# def model_build_fn(*args, **kwargs) -> LightningModel:
-#     """Export the model build function."""
-#     compression = kwargs.pop("compression", None)
-#     return LightningModel(MLP(*args, **kwargs), compression=compression)
+def model_build_fn(*args, **kwargs) -> LightningModel:
+    """Export the model build function."""
+    compression = kwargs.pop("compression", None)
+    return LightningModel(MLP(*args, **kwargs), compression=compression)
 
 # To Run LinearSVM basic example
-def model_build_fn(*args, **kwargs):
-    compression = kwargs.pop("compression", None)
-    return LightningModel(LinearSVM(*args, **kwargs), compression=compression)
+# def model_build_fn(*args, **kwargs):
+#     compression = kwargs.pop("compression", None)
+#     return LightningModel(LinearSVM(*args, **kwargs), compression=compression)
