@@ -4,77 +4,66 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report
-from p2pfl.learning.dataset.p2pfl_dataset import P2PFLDataset
-
-# Set random seeds for reproducible results
-np.random.seed(42)
-import random
-random.seed(42)
+import torch
+import torchvision
+import torchvision.transforms as transforms
 
 # -----------------------------
-# 1. Load & Preprocess MNIST Dataset (Same as mnist.py)
+# 1. Load & Preprocess MNIST Dataset (Same format as P2PFL)
 # -----------------------------
-print("🚀 Loading MNIST dataset (same as P2PFL code)...")
+print("🚀 Loading MNIST dataset (same format as P2PFL)...")
 start_time = time.time()
 
-# Use the EXACT same dataset as mnist.py
-data = P2PFLDataset.from_huggingface("p2pfl/MNIST")
-print(f"📊 Dataset loaded from P2PFL")
+# Load MNIST dataset using torchvision (same data, different loading method)
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    # Don't normalize to match P2PFL format
+])
 
-# Convert to numpy arrays for sklearn
+# Set random seed for reproducible results
+np.random.seed(42)
+torch.manual_seed(42)
+
+# Load training data
+train_dataset = torchvision.datasets.MNIST(
+    root='./data', 
+    train=True, 
+    download=True, 
+    transform=transform
+)
+
+# Load test data
+test_dataset = torchvision.datasets.MNIST(
+    root='./data', 
+    train=False, 
+    download=True, 
+    transform=transform
+)
+
+# Convert to numpy arrays
 X_data = []
 y_data = []
-sample_count = 0
 
-# Try to access the dataset using the correct P2PFLDataset methods
-try:
-    # Check if dataset has a data attribute or method
-    if hasattr(data, 'data'):
-        dataset_data = data.data
-        print(f"📊 Found dataset.data with {len(dataset_data)} samples")
-        
-        # Load data in deterministic order
-        for i, sample in enumerate(dataset_data):
-            if i >= 1000:  # Limit to first 1000 samples for testing
-                break
-            X_data.append(sample["image"].flatten().numpy())
-            y_data.append(sample["label"].item())
-            sample_count += 1
-            
-    elif hasattr(data, '__iter__'):
-        print("📊 Dataset is iterable, trying to iterate...")
-        # Load data in deterministic order
-        for i, sample in enumerate(data):
-            if i >= 1000:  # Limit to first 1000 samples for testing
-                break
-            X_data.append(sample["image"].flatten().numpy())
-            y_data.append(sample["label"].item())
-            sample_count += 1
-            
-    else:
-        print("⚠️  Cannot access dataset data directly")
-        # Fallback: create dummy data for testing
-        print("🔄 Creating dummy data for testing...")
-        # Create 1000 dummy samples with fixed seed
-        np.random.seed(42)  # Ensure reproducible dummy data
-        X_data = [np.random.randn(784) for _ in range(1000)]
-        y_data = [np.random.randint(0, 10) for _ in range(1000)]
-        sample_count = 1000
-        
-except Exception as e:
-    print(f"⚠️  Error accessing dataset: {e}")
-    # Fallback: create dummy data for testing
-    print("🔄 Creating dummy data for testing...")
-    # Create 1000 dummy samples with fixed seed
-    np.random.seed(42)  # Ensure reproducible dummy data
-    X_data = [np.random.randn(784) for _ in range(1000)]
-    y_data = [np.random.randint(0, 10) for _ in range(1000)]
-    sample_count = 1000
+print("📊 Loading training data...")
+# Load training data in deterministic order
+for i in range(len(train_dataset)):
+    image, label = train_dataset[i]
+    X_data.append(image.flatten().numpy())  # Flatten 28x28 to 784
+    y_data.append(label)  # label is already an int
 
-print(f"📊 Successfully loaded {sample_count} samples")
+print("📊 Loading test data...")
+# Load test data in deterministic order
+for i in range(len(test_dataset)):
+    image, label = test_dataset[i]
+    X_data.append(image.flatten().numpy())
+    y_data.append(label)  # label is already an int
 
+# Convert to numpy arrays and ensure deterministic order
 X = np.array(X_data)
 y = np.array(y_data)
+
+print(f"📊 Successfully loaded {len(X_data)} samples")
+print(f"⏱️  Data loading time: {time.time() - start_time:.2f} seconds")
 
 # Print 5 lines of raw data for inspection
 print(f"\n📋 Sample Raw Data (first 5 samples) - DETERMINISTIC ORDER:")
@@ -102,8 +91,6 @@ for i, idx in enumerate(zero_indices[:5]):  # Show first 5 zero samples
     print(f"  Non-zero pixels count: {np.count_nonzero(X_data[idx])}")
     print(f"  Mean pixel value: {X_data[idx].mean():.3f}")
     print()
-
-print(f"⏱️  Data loading time: {time.time() - start_time:.2f} seconds")
 
 # Convert to binary classification: 0=1 (positive), others=0 (negative)
 y_binary = (y == 0).astype(int)
@@ -158,7 +145,7 @@ for i, idx in enumerate(zero_test_indices[:5]):  # Show first 5 zero test sample
 # 2. Define SGD-based Linear SVM (binary)
 # -----------------------------
 class BinarySVM:
-    def __init__(self, lr=0.001, C=1.0, n_iters=100):
+    def __init__(self, lr=0.001, C=1.0, n_iters=50):
         self.lr = lr
         self.C = C
         self.n_iters = n_iters
@@ -300,59 +287,49 @@ print(f"\n📝 Detailed Classification Report:")
 print(classification_report(y_test, y_pred))
 
 # -----------------------------
-# 6. Convergence Visualization (Epoch vs Loss)
+# 6. Convergence Visualization
 # -----------------------------
 convergence_data = model.get_convergence_data()
-
-# Use iteration indices as epochs for plotting
-epochs = list(range(1, len(convergence_data['loss_history']) + 1))
 
 # Plot convergence for binary SVM
 plt.figure(figsize=(15, 5))
 
-# Plot 1: Loss convergence for binary SVM (Epoch vs Loss)
+# Plot 1: Loss convergence for binary SVM
 plt.subplot(1, 3, 1)
-plt.plot(epochs, convergence_data['loss_history'], label="0 vs Non-0 SVM", alpha=0.8, color='blue', marker='o')
+plt.plot(convergence_data['loss_history'], label="0 vs Non-0 SVM", alpha=0.8, color='blue')
 plt.title("Loss Convergence - 0 vs Non-0 SVM")
-plt.xlabel("Epoch")
+plt.xlabel("Iteration")
 plt.ylabel("Hinge Loss")
 plt.legend()
 plt.grid(True, alpha=0.3)
 
-# Plot 2: Accuracy convergence for binary SVM (Epoch vs Accuracy)
+# Plot 2: Accuracy convergence for binary SVM
 plt.subplot(1, 3, 2)
-plt.plot(epochs, convergence_data['accuracy_history'], label="0 vs Non-0 SVM", alpha=0.8, color='green', marker='o')
+plt.plot(convergence_data['accuracy_history'], label="0 vs Non-0 SVM", alpha=0.8, color='green')
 plt.title("Accuracy Convergence - 0 vs Non-0 SVM")
-plt.xlabel("Epoch")
+plt.xlabel("Iteration")
 plt.ylabel("Training Accuracy")
 plt.legend()
 plt.grid(True, alpha=0.3)
 
-# Plot 3: Combined loss and accuracy (Epoch aligned)
+# Plot 3: Combined loss and accuracy
 plt.subplot(1, 3, 3)
 ax1 = plt.gca()
 ax2 = ax1.twinx()
 
-line1 = ax1.plot(epochs, convergence_data['loss_history'], color='red', alpha=0.7, label='Loss', marker='o')
-ax1.set_xlabel("Epoch")
+line1 = ax1.plot(convergence_data['loss_history'], color='red', alpha=0.7, label='Loss')
+ax1.set_xlabel("Iteration")
 ax1.set_ylabel("Loss", color='red')
 ax1.tick_params(axis='y', labelcolor='red')
 
-line2 = ax2.plot(epochs, convergence_data['accuracy_history'], color='blue', alpha=0.7, label='Accuracy', marker='o')
+line2 = ax2.plot(convergence_data['accuracy_history'], color='blue', alpha=0.7, label='Accuracy')
 ax2.set_ylabel("Accuracy", color='blue')
 ax2.tick_params(axis='y', labelcolor='blue')
 
-plt.title("Loss vs Accuracy Convergence (Epochs)")
+plt.title("Loss vs Accuracy Convergence")
 plt.grid(True, alpha=0.3)
 
 plt.tight_layout()
-# Save the figure for later inspection
-try:
-    plt.savefig('convergence_epochs_loss_accuracy.png')
-    print("📈 Saved convergence plot to convergence_epochs_loss_accuracy.png")
-except Exception:
-    print("⚠️ Could not save convergence plot to file")
-
 plt.show()
 
 print(f"\n✅ Scikit-learn SVM experiment completed!")
